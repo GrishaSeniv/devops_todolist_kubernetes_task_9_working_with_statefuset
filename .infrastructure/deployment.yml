@@ -108,3 +108,13 @@ spec:
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pvc-data
+        - name: app-secrets-volume
+          secret:
+            secretName: app-secret
+        - name: app-config-volume
+          configMap:
+            name: app-config
