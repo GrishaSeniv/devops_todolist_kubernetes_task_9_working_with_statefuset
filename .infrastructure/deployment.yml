@@ -17,9 +17,36 @@ spec:
       labels:
         app: todoapp
     spec:
+      initContainers:
+        - name: db-migration
+          # Use the *exact same image* as your main application
+          image: gseniv/todoapp:4.0.0
+          # This command overrides the Dockerfile's CMD
+          command: [ "python", "manage.py", "migrate" ]
+          env:
+            - name: NAME
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: NAME
+            - name: USER
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: USER
+            - name: PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: PASSWORD
+            - name: HOST
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: HOST
       containers:
         - name: todoapp
-          image: ikulyk404/todoapp:3.0.0
+          image: gseniv/todoapp:4.0.0
           volumeMounts:
             - name: data
               mountPath: /app/data

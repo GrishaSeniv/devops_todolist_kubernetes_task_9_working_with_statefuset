@@ -1,28 +1,60 @@
+# ---
+# Defines the API version and type of Kubernetes object.
+# A "StatefulSet" is used for applications like databases that require
+# stable, unique network identifiers and persistent, stable storage.
+# ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: mysql
   namespace: mysql
 spec:
+  # ---
+  # The "selector" tells the StatefulSet which pods to manage.
+  # It must match the labels set in the pod template (spec.template.metadata.labels).
+  # ---
   selector:
     matchLabels:
       app: mysql
+  # ---
+  # "replicas: 3" tells the StatefulSet to create 3 pods in total.
+  # They will be named with stable, ordered names: mysql-0, mysql-1, mysql-2.
+  # This is for a high-availability (HA) database setup.
+  # ---
   replicas: 3
+  # ---
+  # "serviceName" is critical for a StatefulSet. It's the name of the "Headless Service"
+  # that controls the network domain for these pods. This is what gives
+  # each pod a stable, unique DNS name like:
+  #   mysql-0.mysql.mysql.svc.cluster.local
+  #   ( <pod-name>.<service-name>.<namespace>.svc.cluster.local )
+  # ---
   serviceName: mysql
   template:
     metadata:
+      # These labels are applied to each pod. The "selector" above must match this.
       labels:
         app: mysql
     spec:
       containers:
         - name: mysql
           image: mysql:8.0
+          # Exposes the standard MySQL port 3306 from the container
           ports:
             - name: mysql
               containerPort: 3306
+          # ---
+          # "volumeMounts" attach the volumes (defined below) to directories
+          # inside the container.
+          # ---
           volumeMounts:
+            # Mounts the persistent volume named "data"
             - name: data
+              # Mounts it at /var/lib/mysql, which is where MySQL stores its data
               mountPath: /var/lib/mysql
+              # "subPath: mysql" makes it mount a 'mysql' folder *inside* the
+              # volume, not the volume root. This is often used to avoid
+              # permission issues with the volume's root directory.
               subPath: mysql
             - name: mysql-config
               mountPath: /docker-entrypoint-initdb.d
@@ -46,29 +78,69 @@ spec:
               value: app_db
           resources:
             requests:
-              cpu: 500m
-              memory: 1Gi
+              # MINIMUM required resources for scheduling and stability
+              cpu: 500m  # Half a CPU core (500 millicores)
+              memory: 1Gi # 1 Gibibyte of RAM
+            limits:
+              # MAXIMUM resources the container can consume.
+              # Limiting memory is critical to prevent the pod from being
+              # OOMKilled by the node if it uses too much.
+              memory: 2Gi # Set memory limit higher than request (e.g., 2x)
+              # CPU limits are often set equal to or just above requests
+              # for a database to prevent CPU throttling. Setting it higher
+              # than the request guarantees access up to this amount.
+              cpu: 1000m  # One full CPU core (1000 millicores)
+          # ---
+          # "livenessProbe" checks if the container is still alive.
+          # If this probe fails, Kubernetes will kill and restart the container.
+          # ---
           livenessProbe:
             exec:
               command: [ "mysqladmin", "ping" ]
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
+            initialDelaySeconds: 30 # Wait 30s after container start before first check
+            periodSeconds: 10 # Run the check every 10 seconds
+            timeoutSeconds: 5 # Wait 5s for the command to respond
+          # ---
+          # "readinessProbe" checks if the container is ready to accept traffic.
+          # If this fails, the pod is marked "Not Ready" and is removed from
+          # the Service's endpoints (it won't receive any new connections).
+          # ---
           readinessProbe:
             exec:
               command: [ "mysqladmin", "ping" ]
-            initialDelaySeconds: 5
-            periodSeconds: 2
-            timeoutSeconds: 1
+            initialDelaySeconds: 5  # Wait 5s after container start before first check
+            periodSeconds: 2        # Run the check every 2 seconds
+            timeoutSeconds: 1         # Wait 1s for the command to respond
+      # ---
+      # "volumes" defines non-persistent volumes that the pod can use.
+      # This is used for injecting configuration, not for storing database data.
+      # ---
       volumes:
+        # Defines a volume named "mysql-config" (matches volumeMount above)
         - name: mysql-config
+          # The source of this volume is a ConfigMap named "mysql-config"
+          # This ConfigMap should contain your 'init.sql' file.
           configMap:
             name: mysql-config
+  # ---
+  # "volumeClaimTemplates" is the core feature for persistent storage
+  # in a StatefulSet. It defines a template for a PersistentVolumeClaim (PVC).
+  #
+  # Each pod (mysql-0, mysql-1, mysql-2) will get its *own* unique PVC
+  # created from this template, e.g., "data-mysql-0", "data-mysql-1".
+  # When a pod is rescheduled, it always re-attaches to its original volume.
+  # ---
   volumeClaimTemplates:
     - metadata:
+        # The name of the PVC template. Must match volumeMounts.name above.
         name: data
       spec:
+        # "ReadWriteOnce": The volume can be mounted as read-write by
+        # a single node. This is required for standard block storage (like
+        # AWS EBS, GCE Persistent Disk) used by databases.
         accessModes: [ "ReadWriteOnce" ]
+        # "resources.requests.storage": Each PVC will request 2Gi of
+        # persistent storage from your cluster's storage provider.
         resources:
           requests:
             storage: 2Gi

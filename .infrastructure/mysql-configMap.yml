@@ -6,5 +6,5 @@ metadata:
 data:
   init.sql: |
     CREATE DATABASE IF NOT EXISTS app_db;
-    CREATE USER 'app_user'@'%' IDENTIFIED BY '1234';
+    CREATE USER IF NOT EXISTS 'app_user'@'%' IDENTIFIED BY '1234';
     GRANT ALL PRIVILEGES ON app_db.* TO 'app_user'@'%';
