@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - name: mysql
+      port: 3306
+  # Headless service
+  # Example:
+  # pod-name.service-name.namespace.svc.cluster.local
+  # mysql-0.mysql.mysql
+  clusterIP: None
